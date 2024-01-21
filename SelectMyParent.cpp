@@ -18,14 +18,15 @@ void DisplayErrorMessage(LPTSTR pszMessage, DWORD dwLastError)
 		LocalFree(hlErrorMessage);
 	}
 }
-
+// 调整当前进程权限
 BOOL CurrentProcessAdjustToken(void)
 {
 	HANDLE hToken;
 	TOKEN_PRIVILEGES sTP;
-
+	// 打开当前进程的令牌
 	if(OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
 	{
+		// 查询权限
 		if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &sTP.Privileges[0].Luid))
 		{
 			CloseHandle(hToken);
@@ -33,6 +34,7 @@ BOOL CurrentProcessAdjustToken(void)
 		}
 		sTP.PrivilegeCount = 1;
 		sTP.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+		// 调整权限
 		if (!AdjustTokenPrivileges(hToken, 0, &sTP, sizeof(sTP), NULL, NULL))
 		{
 			CloseHandle(hToken);
@@ -51,6 +53,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	SIZE_T cbAttributeListSize = 0;
 	PPROC_THREAD_ATTRIBUTE_LIST pAttributeList = NULL;
 	HANDLE hParentProcess = NULL;
+	// 进程id
 	DWORD dwPid = 0;
 
 	_putts(TEXT("SelectMyParent v0.0.0.1: start a program with a selected parent process"));
@@ -61,6 +64,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		_putts(TEXT("usage: SelectMyParent program pid"));
 	else
 	{
+		// 进程id 第二个参数
 		dwPid = _tstoi(argv[2]);
 		if (0 == dwPid)
 		{
@@ -79,24 +83,29 @@ int _tmain(int argc, _TCHAR* argv[])
 			DisplayErrorMessage(TEXT("InitializeProcThreadAttributeList error"), GetLastError());
 			return 0;
 		}
+		// 提权
 		CurrentProcessAdjustToken();
+		// 打开父进程句柄
 		hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwPid);
 		if (NULL == hParentProcess)
 		{
 			DisplayErrorMessage(TEXT("OpenProcess error"), GetLastError());
 			return 0;
 		}
+		// 更新线程
 		if (!UpdateProcThreadAttribute(pAttributeList, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &hParentProcess, sizeof(HANDLE), NULL, NULL))
 		{
 			DisplayErrorMessage(TEXT("UpdateProcThreadAttribute error"), GetLastError());
 			return 0;
 		}
 		sie.lpAttributeList = pAttributeList;
+		// 创建进程
 		if (!CreateProcess(NULL, argv[1], NULL, NULL, FALSE, EXTENDED_STARTUPINFO_PRESENT, NULL, NULL, &sie.StartupInfo, &pi))
 		{
 			DisplayErrorMessage(TEXT("CreateProcess error"), GetLastError());
 			return 0;
 		}
+		// 进程已创建
 		_tprintf(TEXT("Process created: %d\n"), pi.dwProcessId);
 		DeleteProcThreadAttributeList(pAttributeList);
 		CloseHandle(hParentProcess);
